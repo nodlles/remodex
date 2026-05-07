@@ -134,7 +134,7 @@ test("remodex doctor prints local environment checks", async () => {
   });
 
   assert.deepEqual(messages, [
-    `[remodex] Doctor passed (version ${version})`,
+    `[remodex] Doctor found warnings (version ${version})`,
     "- node: ok — v25.0.0",
     "- REMODEX_RELAY: warn — not set",
   ]);
@@ -160,6 +160,63 @@ test("collectDoctorStatus reports required command failures", () => {
   assert.equal(report.checks.find((check) => check.name === "codex")?.ok, false);
   assert.equal(report.checks.find((check) => check.name === "codex")?.required, true);
   assert.equal(report.checks.find((check) => check.name === "REMODEX_RELAY")?.required, false);
+});
+
+test("collectDoctorStatus checks Xcode project loading on macOS", () => {
+  const calls = [];
+  const report = collectDoctorStatus({
+    platform: "darwin",
+    env: { REMODEX_RELAY: "ws://127.0.0.1:9000/relay" },
+    repoRoot: "/repo/remodex",
+    existsSyncImpl(filePath) {
+      return filePath === "/repo/remodex/CodexMobile/CodexMobile.xcodeproj";
+    },
+    execFileSyncImpl(command, args) {
+      calls.push([command, args]);
+      if (command === "node") return "v25.0.0\n";
+      if (command === "npm") return "11.0.0\n";
+      if (command === "codex") return "codex-cli 0.128.0\n";
+      if (command === "xcodebuild" && args[0] === "-version") return "Xcode 26.4.1\n";
+      if (command === "xcodebuild" && args[0] === "-list") return "Information about project CodexMobile:\n";
+      throw new Error(`unexpected command ${command}`);
+    },
+  });
+
+  assert.equal(report.ok, true);
+  assert.equal(report.checks.find((check) => check.name === "CodexMobile.xcodeproj")?.ok, true);
+  assert.equal(report.checks.find((check) => check.name === "xcodebuild project list")?.ok, true);
+  assert.deepEqual(calls.find(([command, args]) => command === "xcodebuild" && args[0] === "-list"), [
+    "xcodebuild",
+    ["-list", "-project", "/repo/remodex/CodexMobile/CodexMobile.xcodeproj"],
+  ]);
+});
+
+test("collectDoctorStatus explains CoreSimulator Xcode project failures", () => {
+  const error = new Error("xcodebuild failed");
+  error.stderr = "A required plugin failed to load. Library not loaded: /Library/Developer/PrivateFrameworks/CoreSimulator.framework/Versions/A/CoreSimulator\n";
+
+  const report = collectDoctorStatus({
+    platform: "darwin",
+    env: {},
+    repoRoot: "/repo/remodex",
+    existsSyncImpl() {
+      return true;
+    },
+    execFileSyncImpl(command, args) {
+      if (command === "node") return "v25.0.0\n";
+      if (command === "npm") return "11.0.0\n";
+      if (command === "codex") return "codex-cli 0.128.0\n";
+      if (command === "xcodebuild" && args[0] === "-version") return "Xcode 26.4.1\n";
+      if (command === "xcodebuild" && args[0] === "-list") throw error;
+      throw new Error(`unexpected command ${command}`);
+    },
+  });
+
+  const projectListCheck = report.checks.find((check) => check.name === "xcodebuild project list");
+  assert.equal(report.ok, true);
+  assert.equal(projectListCheck?.ok, false);
+  assert.match(projectListCheck?.detail || "", /CoreSimulator/);
+  assert.match(projectListCheck?.suggestion || "", /xcodebuild -runFirstLaunch/);
 });
 
 test("remodex status --json exposes daemon metadata for companion apps", async () => {

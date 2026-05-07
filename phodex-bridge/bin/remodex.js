@@ -20,6 +20,8 @@ const {
   watchThreadRollout,
 } = require("../src");
 const { execFileSync } = require("child_process");
+const fs = require("fs");
+const path = require("path");
 const { version } = require("../package.json");
 
 const defaultDeps = {
@@ -309,6 +311,8 @@ function collectDoctorStatus({
   platform = process.platform,
   env = process.env,
   execFileSyncImpl = execFileSync,
+  repoRoot = path.resolve(__dirname, "..", ".."),
+  existsSyncImpl = fs.existsSync,
 } = {}) {
   const checks = [
     commandVersionCheck("node", ["--version"], { required: true, execFileSyncImpl }),
@@ -317,7 +321,22 @@ function collectDoctorStatus({
   ];
 
   if (platform === "darwin") {
-    checks.push(commandVersionCheck("xcodebuild", ["-version"], { required: false, execFileSyncImpl }));
+    const xcodebuildCheck = commandVersionCheck("xcodebuild", ["-version"], { required: false, execFileSyncImpl });
+    checks.push(xcodebuildCheck);
+
+    const xcodeProjectPath = path.join(repoRoot, "CodexMobile", "CodexMobile.xcodeproj");
+    const xcodeProjectExists = existsSyncImpl(xcodeProjectPath);
+    checks.push({
+      name: "CodexMobile.xcodeproj",
+      ok: xcodeProjectExists,
+      required: false,
+      detail: xcodeProjectExists ? relativeDoctorPath(repoRoot, xcodeProjectPath) : "missing at CodexMobile/CodexMobile.xcodeproj",
+      suggestion: xcodeProjectExists ? undefined : "Run doctor from a Remodex source checkout or verify the iOS project was cloned.",
+    });
+
+    if (xcodeProjectExists) {
+      checks.push(xcodeProjectListCheck(xcodeProjectPath, { execFileSyncImpl }));
+    }
   }
 
   checks.push({
@@ -362,6 +381,54 @@ function commandVersionCheck(command, args, {
   }
 }
 
+function xcodeProjectListCheck(projectPath, {
+  execFileSyncImpl = execFileSync,
+} = {}) {
+  try {
+    execFileSyncImpl("xcodebuild", ["-list", "-project", projectPath], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    return {
+      name: "xcodebuild project list",
+      ok: true,
+      required: false,
+      detail: "CodexMobile project can be loaded",
+    };
+  } catch (error) {
+    const detail = doctorErrorMessage(error);
+    return {
+      name: "xcodebuild project list",
+      ok: false,
+      required: false,
+      detail,
+      suggestion: xcodeDoctorSuggestion(detail),
+    };
+  }
+}
+
+function xcodeDoctorSuggestion(message) {
+  const normalized = String(message || "").toLowerCase();
+  if (normalized.includes("coresimulator") || normalized.includes("idesimulatorfoundation")) {
+    return "Open Xcode and finish installing required components, then rerun `xcodebuild -runFirstLaunch`. If it still fails, reinstall Xcode or switch xcode-select to the full Xcode app.";
+  }
+  if (normalized.includes("license")) {
+    return "Accept the Xcode license with `sudo xcodebuild -license accept`.";
+  }
+  if (normalized.includes("runfirstlaunch") || normalized.includes("first launch")) {
+    return "Run `xcodebuild -runFirstLaunch` or open Xcode once to complete setup.";
+  }
+  if (normalized.includes("xcode-select") || normalized.includes("developer directory")) {
+    return "Point command line tools at Xcode with `sudo xcode-select -s /Applications/Xcode.app/Contents/Developer`.";
+  }
+  return "Open Xcode once, ensure required components are installed, and rerun `remodex doctor`.";
+}
+
+function relativeDoctorPath(root, target) {
+  const relativePath = path.relative(root, target);
+  return relativePath && !relativePath.startsWith("..") ? relativePath : target;
+}
+
 function firstOutputLine(output) {
   return output.split(/\r?\n/).map((line) => line.trim()).find(Boolean) || "";
 }
@@ -375,10 +442,15 @@ function doctorErrorMessage(error) {
 }
 
 function printDoctorStatus(report, { consoleImpl = console } = {}) {
-  consoleImpl.log(`[remodex] Doctor ${report.ok ? "passed" : "found issues"} (version ${report.currentVersion})`);
+  const hasWarnings = report.checks.some((check) => !check.ok && !check.required);
+  const summary = !report.ok ? "found issues" : (hasWarnings ? "found warnings" : "passed");
+  consoleImpl.log(`[remodex] Doctor ${summary} (version ${report.currentVersion})`);
   for (const check of report.checks) {
     const status = check.ok ? "ok" : (check.required ? "missing" : "warn");
     consoleImpl.log(`- ${check.name}: ${status} — ${check.detail}`);
+    if (check.suggestion) {
+      consoleImpl.log(`  suggestion: ${check.suggestion}`);
+    }
   }
 }
 

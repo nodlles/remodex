@@ -249,7 +249,7 @@ macOS only. Prints the current `launchd` / bridge status, including whether the 
 
 ### `remodex doctor`
 
-Runs local environment checks for source/self-host builds, including Node.js, npm, Codex CLI, optional Xcode availability on macOS, and whether `REMODEX_RELAY` is configured. Add `--json` for machine-readable output.
+Runs local environment checks for source/self-host builds, including Node.js, npm, Codex CLI, optional Xcode availability on macOS, whether the iOS Xcode project can be loaded, and whether `REMODEX_RELAY` is configured. Add `--json` for machine-readable output.
 
 ```sh
 remodex doctor
