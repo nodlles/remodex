@@ -441,7 +441,7 @@ open CodexMobile.xcodeproj
 
 Build and run on a physical device or simulator with Xcode. The app uses SwiftUI and the current project target is iOS 18.6.
 
-Public source builds default `REMODEX_OPEN_SOURCE_BUILD` to `YES`, so locally compiled/self-hosted apps do not require the maintainer's RevenueCat entitlement to continue using Remodex after the free-send trial. Private/App Store builds can override that value to `NO` in the ignored `CodexMobile/BuildSupport/PrivateOverrides.xcconfig` file to enforce RevenueCat access.
+Public source builds default `REMODEX_OPEN_SOURCE_BUILD` to `YES`, so locally compiled/self-hosted apps do not require the maintainer's RevenueCat entitlement to continue using Remodex after the free-send trial. Private/App Store builds can override that value to `NO` in the ignored `CodexMobile/BuildSupport/PrivateOverrides.xcconfig` file to enforce RevenueCat access. See [`Docs/local-build.md`](Docs/local-build.md) for the fork's source-build walkthrough.
 
 ## Contributing
 
