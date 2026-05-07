@@ -8,6 +8,7 @@ import Foundation
 
 enum AppEnvironment {
     private static let defaultRelayURLInfoPlistKey = "PHODEX_DEFAULT_RELAY_URL"
+    private static let openSourceBuildInfoPlistKey = "REMODEX_OPEN_SOURCE_BUILD"
     private static let revenueCatPublicAPIKeyInfoPlistKey = "REVENUECAT_PUBLIC_API_KEY"
     private static let revenueCatEntitlementNameInfoPlistKey = "REVENUECAT_ENTITLEMENT_NAME"
     private static let revenueCatDefaultOfferingIDInfoPlistKey = "REVENUECAT_DEFAULT_OFFERING_ID"
@@ -22,6 +23,12 @@ enum AppEnvironment {
             return infoURL
         }
         return defaultRelayURLString
+    }
+
+    // Public source builds are self-host friendly and should not require the
+    // maintainer's RevenueCat entitlement to use the local-first app.
+    static var isOpenSourceBuild: Bool {
+        resolvedBool(forInfoPlistKey: openSourceBuildInfoPlistKey)
     }
 
     // Reads the public RevenueCat key shipped with the client build.
@@ -94,6 +101,24 @@ private extension AppEnvironment {
         }
 
         return trimmedValue
+    }
+
+    static func resolvedBool(forInfoPlistKey key: String) -> Bool {
+        guard let rawValue = Bundle.main.object(forInfoDictionaryKey: key) else {
+            return false
+        }
+        if let boolValue = rawValue as? Bool {
+            return boolValue
+        }
+        if let stringValue = rawValue as? String {
+            switch stringValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+            case "1", "true", "yes", "y", "on":
+                return true
+            default:
+                return false
+            }
+        }
+        return false
     }
 
     static func feedbackBody(

@@ -1,5 +1,5 @@
 // FILE: remodex-cli.test.js
-// Purpose: Verifies the public CLI exposes version, service control, and machine-readable status output.
+// Purpose: Verifies the public CLI exposes version, service control, doctor checks, and machine-readable status output.
 // Layer: Integration-lite test
 // Exports: node:test suite
 // Depends on: node:test, node:assert/strict, child_process, path, ../package.json, ../bin/remodex
@@ -9,7 +9,7 @@ const assert = require("node:assert/strict");
 const { execFileSync } = require("child_process");
 const path = require("path");
 const { version } = require("../package.json");
-const { main } = require("../bin/remodex");
+const { collectDoctorStatus, main } = require("../bin/remodex");
 
 test("remodex --version prints the package version", () => {
   const cliPath = path.join(__dirname, "..", "bin", "remodex.js");
@@ -99,6 +99,67 @@ test("remodex up shows a startup indicator while waiting for the pairing QR", as
     ["start-service", { waitForPairing: true }],
     ["print-qr", { pairingSession: { pairingPayload: { sessionId: "session-up" } } }],
   ]);
+});
+
+test("remodex doctor prints local environment checks", async () => {
+  const messages = [];
+
+  await main({
+    argv: ["node", "remodex", "doctor"],
+    platform: "darwin",
+    consoleImpl: {
+      log(message) {
+        messages.push(message);
+      },
+      error(message) {
+        throw new Error(`unexpected error: ${message}`);
+      },
+    },
+    exitImpl(code) {
+      throw new Error(`unexpected exit ${code}`);
+    },
+    deps: {
+      collectDoctorStatus() {
+        return {
+          ok: true,
+          currentVersion: version,
+          platform: "darwin",
+          checks: [
+            { name: "node", ok: true, required: true, detail: "v25.0.0" },
+            { name: "REMODEX_RELAY", ok: false, required: false, detail: "not set" },
+          ],
+        };
+      },
+    },
+  });
+
+  assert.deepEqual(messages, [
+    `[remodex] Doctor passed (version ${version})`,
+    "- node: ok — v25.0.0",
+    "- REMODEX_RELAY: warn — not set",
+  ]);
+});
+
+test("collectDoctorStatus reports required command failures", () => {
+  const report = collectDoctorStatus({
+    platform: "linux",
+    env: {},
+    execFileSyncImpl(command) {
+      if (command === "node") {
+        return "v25.0.0\n";
+      }
+      if (command === "npm") {
+        return "11.0.0\n";
+      }
+      throw new Error(`missing ${command}`);
+    },
+  });
+
+  assert.equal(report.ok, false);
+  assert.equal(report.checks.find((check) => check.name === "node")?.ok, true);
+  assert.equal(report.checks.find((check) => check.name === "codex")?.ok, false);
+  assert.equal(report.checks.find((check) => check.name === "codex")?.required, true);
+  assert.equal(report.checks.find((check) => check.name === "REMODEX_RELAY")?.required, false);
 });
 
 test("remodex status --json exposes daemon metadata for companion apps", async () => {

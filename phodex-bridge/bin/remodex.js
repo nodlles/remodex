@@ -19,6 +19,7 @@ const {
   openLastActiveThread,
   watchThreadRollout,
 } = require("../src");
+const { execFileSync } = require("child_process");
 const { version } = require("../package.json");
 
 const defaultDeps = {
@@ -34,6 +35,7 @@ const defaultDeps = {
   resetBridgePairing,
   openLastActiveThread,
   watchThreadRollout,
+  collectDoctorStatus,
 };
 
 if (require.main === module) {
@@ -166,6 +168,16 @@ async function main({
     return;
   }
 
+  if (command === "doctor") {
+    const report = deps.collectDoctorStatus({ platform });
+    if (jsonOutput) {
+      emitJson(report);
+      return;
+    }
+    printDoctorStatus(report, { consoleImpl });
+    return;
+  }
+
   if (command === "reset-pairing") {
     try {
       if (platform === "darwin") {
@@ -234,8 +246,8 @@ async function main({
   consoleImpl.error(`Unknown command: ${command}`);
   consoleImpl.error(
     "Usage: remodex up | remodex run | remodex start | remodex restart | remodex stop | remodex status | "
-    + "remodex reset-pairing | remodex resume | remodex watch [threadId] | remodex --version | "
-    + "append --json to start/restart/stop/status/reset-pairing/resume for machine-readable output"
+    + "remodex doctor | remodex reset-pairing | remodex resume | remodex watch [threadId] | remodex --version | "
+    + "append --json to start/restart/stop/status/doctor/reset-pairing/resume for machine-readable output"
   );
   exitImpl(1);
 }
@@ -292,6 +304,84 @@ function emitJson(payload) {
   process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
 }
 
+
+function collectDoctorStatus({
+  platform = process.platform,
+  env = process.env,
+  execFileSyncImpl = execFileSync,
+} = {}) {
+  const checks = [
+    commandVersionCheck("node", ["--version"], { required: true, execFileSyncImpl }),
+    commandVersionCheck("npm", ["--version"], { required: true, execFileSyncImpl }),
+    commandVersionCheck("codex", ["--version"], { required: true, execFileSyncImpl }),
+  ];
+
+  if (platform === "darwin") {
+    checks.push(commandVersionCheck("xcodebuild", ["-version"], { required: false, execFileSyncImpl }));
+  }
+
+  checks.push({
+    name: "REMODEX_RELAY",
+    ok: Boolean((env.REMODEX_RELAY || "").trim()),
+    required: false,
+    detail: (env.REMODEX_RELAY || "").trim() || "not set; source builds should set this or use ./run-local-remodex.sh",
+  });
+
+  const failedRequiredChecks = checks.filter((check) => check.required && !check.ok).length;
+
+  return {
+    ok: failedRequiredChecks === 0,
+    currentVersion: version,
+    platform,
+    checks,
+  };
+}
+
+function commandVersionCheck(command, args, {
+  required = false,
+  execFileSyncImpl = execFileSync,
+} = {}) {
+  try {
+    const output = String(execFileSyncImpl(command, args, {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    }) || "").trim();
+    return {
+      name: command,
+      ok: true,
+      required,
+      detail: firstOutputLine(output) || "available",
+    };
+  } catch (error) {
+    return {
+      name: command,
+      ok: false,
+      required,
+      detail: doctorErrorMessage(error),
+    };
+  }
+}
+
+function firstOutputLine(output) {
+  return output.split(/\r?\n/).map((line) => line.trim()).find(Boolean) || "";
+}
+
+function doctorErrorMessage(error) {
+  const stderr = error && error.stderr ? String(error.stderr).trim() : "";
+  if (stderr) {
+    return firstOutputLine(stderr);
+  }
+  return (error && error.message) || "not available";
+}
+
+function printDoctorStatus(report, { consoleImpl = console } = {}) {
+  consoleImpl.log(`[remodex] Doctor ${report.ok ? "passed" : "found issues"} (version ${report.currentVersion})`);
+  for (const check of report.checks) {
+    const status = check.ok ? "ok" : (check.required ? "missing" : "warn");
+    consoleImpl.log(`- ${check.name}: ${status} — ${check.detail}`);
+  }
+}
+
 function assertMacOSCommand(name, {
   platform = process.platform,
   consoleImpl = console,
@@ -310,6 +400,7 @@ function isVersionCommand(value) {
 }
 
 module.exports = {
+  collectDoctorStatus,
   isVersionCommand,
   main,
 };

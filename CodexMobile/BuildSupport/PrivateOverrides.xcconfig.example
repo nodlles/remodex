@@ -2,3 +2,5 @@
 // Xcode will load the private file automatically when it exists.
 
 PHODEX_DEFAULT_RELAY_URL =
+// Set this to NO only for private/App Store builds that should enforce RevenueCat access.
+REMODEX_OPEN_SOURCE_BUILD = YES

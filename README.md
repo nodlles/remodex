@@ -247,6 +247,15 @@ macOS only. Stops the background bridge service and clears its transient runtime
 
 macOS only. Prints the current `launchd` / bridge status, including whether the service is loaded and whether a recent pairing payload exists.
 
+### `remodex doctor`
+
+Runs local environment checks for source/self-host builds, including Node.js, npm, Codex CLI, optional Xcode availability on macOS, and whether `REMODEX_RELAY` is configured. Add `--json` for machine-readable output.
+
+```sh
+remodex doctor
+remodex doctor --json
+```
+
 ### `remodex run-service`
 
 macOS only. Internal service entrypoint used by `launchd`. You normally do not run this manually.
@@ -431,6 +440,8 @@ open CodexMobile.xcodeproj
 ```
 
 Build and run on a physical device or simulator with Xcode. The app uses SwiftUI and the current project target is iOS 18.6.
+
+Public source builds default `REMODEX_OPEN_SOURCE_BUILD` to `YES`, so locally compiled/self-hosted apps do not require the maintainer's RevenueCat entitlement to continue using Remodex after the free-send trial. Private/App Store builds can override that value to `NO` in the ignored `CodexMobile/BuildSupport/PrivateOverrides.xcconfig` file to enforce RevenueCat access.
 
 ## Contributing
 

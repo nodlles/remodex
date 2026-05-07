@@ -73,6 +73,7 @@ final class SubscriptionService {
     private static let freeSendLimit = 5
 
     private let defaults: UserDefaults
+    private let isOpenSourceBuild: Bool
     // Keep the task handle nonisolated so `deinit` can cancel it under Swift 6 isolation rules.
     nonisolated(unsafe) private var customerInfoUpdatesTask: Task<Void, Never>?
     private var isBootstrapping = false
@@ -92,8 +93,12 @@ final class SubscriptionService {
     private(set) var isRestoring = false
     private(set) var lastErrorMessage: String?
 
-    init(defaults: UserDefaults = .standard) {
+    init(
+        defaults: UserDefaults = .standard,
+        isOpenSourceBuild: Bool = AppEnvironment.isOpenSourceBuild
+    ) {
         self.defaults = defaults
+        self.isOpenSourceBuild = isOpenSourceBuild
         restoreCachedStateIfAvailable()
         startCustomerInfoObserverIfConfigured()
     }
@@ -103,19 +108,28 @@ final class SubscriptionService {
     }
 
     var remainingFreeSendAttempts: Int {
+        guard !isOpenSourceBuild else {
+            return Self.freeSendLimit
+        }
         max(0, Self.freeSendLimit - freeSendCount)
     }
 
     var hasFreeSendAccess: Bool {
+        guard !isOpenSourceBuild else {
+            return true
+        }
         freeSendCount < Self.freeSendLimit
     }
 
     var hasAppAccess: Bool {
-        hasProAccess || hasFreeSendAccess
+        isOpenSourceBuild || hasProAccess || hasFreeSendAccess
     }
 
     // Counts a valid send attempt for free users even if the turn later fails.
     func consumeFreeSendAttemptIfNeeded() {
+        guard !isOpenSourceBuild else {
+            return
+        }
         guard !hasProAccess, freeSendCount < Self.freeSendLimit else {
             return
         }
@@ -127,6 +141,13 @@ final class SubscriptionService {
     // Bootstraps subscription state once at launch or from the recovery retry action.
     func bootstrap() async {
         guard !isBootstrapping else {
+            return
+        }
+
+        guard !isOpenSourceBuild else {
+            bootstrapState = .ready
+            isLoading = false
+            lastErrorMessage = nil
             return
         }
 

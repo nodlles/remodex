@@ -31,10 +31,25 @@ final class SubscriptionServiceAccessTests: XCTestCase {
         XCTAssertFalse(service.hasAppAccess)
     }
 
-    private func makeService() -> SubscriptionService {
+    func testOpenSourceBuildKeepsAccessWithoutConsumingFreeAttempts() async {
+        let service = makeService(isOpenSourceBuild: true)
+
+        for _ in 0..<7 {
+            service.consumeFreeSendAttemptIfNeeded()
+        }
+        await service.bootstrap()
+
+        XCTAssertEqual(service.freeSendCount, 0)
+        XCTAssertEqual(service.remainingFreeSendAttempts, 5)
+        XCTAssertTrue(service.hasFreeSendAccess)
+        XCTAssertTrue(service.hasAppAccess)
+        XCTAssertEqual(service.bootstrapState, .ready)
+    }
+
+    private func makeService(isOpenSourceBuild: Bool = false) -> SubscriptionService {
         let suiteName = "SubscriptionServiceAccessTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName) ?? .standard
         defaults.removePersistentDomain(forName: suiteName)
-        return SubscriptionService(defaults: defaults)
+        return SubscriptionService(defaults: defaults, isOpenSourceBuild: isOpenSourceBuild)
     }
 }
